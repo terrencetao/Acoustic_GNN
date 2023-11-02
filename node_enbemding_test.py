@@ -54,22 +54,26 @@ if __name__ == "__main__":
         loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=[keras.metrics.SparseCategoricalAccuracy(name="acc")],
     )
-    gnn_model.load_weights("best_weights/Weights")
+    gnn_model.load_weights(os.path.join(input_folder,"best_weights/Weights"))
 
-    test_data = pd.read_pickle("test_data.pl")
-    train_data = pd.read_pickle('train_data.pl')
-    embeddings = gnn_model.node_embeddings_final
-
+    test_data = pd.read_pickle(os.path.join(input_folder,"test_data.pl"))
+    train_data = pd.read_pickle(os.path.join(input_folder,'train_data.pl'))
+    # with open('node_repesentations.pkl', 'wb') as f:  # open a text file
+    #     pl.load(embeddings)
+   
     x_train = train_data.ids.to_numpy()
-    y_train = train_data.ids.to_numpy()
+    y_train = train_data.label.to_numpy()
+
     x_test = test_data.ids.to_numpy()
     y_test = test_data.label.to_numpy()
-    _, test_accuracy = gnn_model.evaluate(x=x_test[:10], y=y_test[:10], verbose=0)
+    _, test_accuracy = gnn_model.evaluate(x=x_test, y=y_test, verbose=0)
     print(f"Test accuracy: {round(test_accuracy * 100, 2)}%")
-    print(tf.gather(embeddings, x_train).shape)
+    _, train_accuracy = gnn_model.evaluate(x=x_train, y=y_train, verbose=0)
+    print(f"Train accuracy: {round(train_accuracy * 100, 2)}%")
+    # print(tf.gather(embeddings, x_train).shape)
 
 
-    clf =  svm.SVC()
-    clf.fit(tf.gather(embeddings, x_train), y_train)
-    y_pred = clf.predict(tf.gather(embeddings, x_test))
-    print(precision_score(y_true=y_test, y_pred=y_pred,average='macro'))
+    # clf =  svm.SVC()
+    # clf.fit(tf.gather(embeddings, x_train), y_train)
+    # y_pred = clf.predict(tf.gather(embeddings, x_test))
+    # print(precision_score(y_true=y_test, y_pred=y_pred,average='macro'))

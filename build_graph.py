@@ -6,6 +6,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+import pickle as pl
 
 
 
@@ -15,7 +16,7 @@ conv_param =[(20,64,1), 32 ,3] #[input_shape, num_filter, kernel_size]
 pooling_param = [2]# [pooling_size, stride, padding]
 learning_rate = 0.01
 dropout_rate = 0.5
-num_epochs = 1
+num_epochs = 1000
 batch_size = 256
 
 
@@ -143,9 +144,9 @@ def train_test_split(dataset, perc =0.5):
 
 
 
-def run_experiment(model, x_train, y_train):
+def run_experiment(model, x_train, y_train, checkpoint_folder='checkpoint_gnn'):
     # Compile the model.
-    checkpoint_path = "checkpoint/cp-{epoch:04d}.ckpt"
+    checkpoint_path = checkpoint_folder+"/cp-{epoch:04d}.ckpt"
     checkpoint_dir = os.path.dirname(checkpoint_path)
 
     # Create a callback that saves the model's weights
@@ -435,10 +436,12 @@ if __name__ == "__main__":
     train_data, test_data = train_test_split(dataset, perc = 0.7)
     print("Train data shape:", train_data.shape)
     print("Test data shape:", test_data.shape)
-    train_data.to_pickle('train_data.pl')
-    test_data.to_pickle('test_data.pl')
+    train_data.to_pickle(os.path.join
+        (input_folder,'train_data.pl'))
+    test_data.to_pickle(os.path.join
+        (input_folder,'test_data.pl'))
     
-
+    
    
     gnn_model = GNNNodeClassifier(
     graph_info=graph_info,
@@ -456,12 +459,15 @@ if __name__ == "__main__":
     x_train = train_data.ids.to_numpy()
     y_train = train_data.label.to_numpy()
     history = run_experiment(gnn_model, x_train, y_train)
-    gnn_model.save_weights("best_weights/Weights")
+    gnn_model.save_weights(os.path.join(input_folder,"best_weights/Weights"))
 
+    
     
     x_test = test_data.ids.to_numpy()
     y_test = test_data.label.to_numpy()
     _, test_accuracy = gnn_model.evaluate(x=x_test, y=y_test, verbose=0)
     print(f"Test accuracy: {round(test_accuracy * 100, 2)}%")
-
-
+     _, train_accuracy = gnn_model.evaluate(x=x_train, y=y_train, verbose=0)
+    print(f"Test accuracy: {round(train_accuracy * 100, 2)}%")
+    # with open(os.path.join(input_folder,'node_repesentations.pkl'), 'wb') as f:  # open a text file
+    #     pl.dumps(gnn_model.node_embeddings_final.eval())
