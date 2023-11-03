@@ -16,7 +16,7 @@ conv_param =[(20,64,1), 32 ,3] #[input_shape, num_filter, kernel_size]
 pooling_param = [2]# [pooling_size, stride, padding]
 learning_rate = 0.01
 dropout_rate = 0.5
-num_epochs = 1000
+num_epochs = 300
 batch_size = 256
 
 
@@ -44,7 +44,7 @@ def build_node (dataset):
     return np.array(list(dataset.sort_values("ids")['mfcc_feautres']))
 
 
-def build_edges(dataset, threshold =0, beta=0):
+def build_edges(dataset, threshold =3000, beta=-1000):
     """
      Principe of this fonction  followin logic:
             1-compute a distance d between 2 nodes 
@@ -71,16 +71,19 @@ def build_edges(dataset, threshold =0, beta=0):
         while j<len(ids):
             d = distance(dataset[dataset['ids']==id1]['mfcc_feautres'].values[0], dataset[dataset['ids']==ids[j]]['mfcc_feautres'].values[0])
 
-            if d>threshold:
-                edges.append([id1, ids[j]])
-
-                if dataset[dataset['ids']==id1]['label'].values[0]==dataset[dataset['ids']==ids[j]]['mfcc_feautres'].values[0]:
+            if d<threshold:
+                
+                if dataset[dataset['ids']==id1]['label'].values[0]==dataset[dataset['ids']==ids[j]]['label'].values[0]:
+                    weights.append(d+beta)
                     weights.append(d+beta)
                     weight = d+beta
                 else:
                     weights.append(d)
+                    weights.append(d)
                     weight = d
                 df_edges_w.append([id,ids, weight])
+                edges.append([id1, ids[j]])
+                edges.append([ids[j], id1])
             j=j+1
     pd.DataFrame(df_edges_w, columns = ['record_1', 'record_2', 'distance']).to_csv('edges_w.csv')
 
@@ -92,41 +95,42 @@ def build_edges(dataset, threshold =0, beta=0):
 
 
 
-def build_edge(dataset):
-    """
-       input: 
-          dataset :DataFrame of data
-       purpose: build edge between 2 nodes which have a same label
-       output : matrix [2, num_edges]
-    """
-    labels = pd.unique(dataset['label'])
-    edges=[]
-    for label in tqdm(labels):
-        ids = list(dataset[dataset['label']==label]['ids'])
-        for i, id in enumerate(ids):
-            j=i+1
-            while j<len(ids):
-                edges.append([id, ids[j]])
-                j=j+1
-    pd.DataFrame(edges, columns = ['record_1', 'record_2']).to_csv('edges.csv')
-    return np.array(edges)
+# def build_edge(dataset):
+#     """
+#        input: 
+#           dataset :DataFrame of data
+#        purpose: build edge between 2 nodes which have a same label
+#        output : matrix [2, num_edges]
+#     """
+#     labels = pd.unique(dataset['label'])
+#     edges=[]
+#     for label in tqdm(labels):
+#         ids = list(dataset[dataset['label']==label]['ids'])
+#         for i, id in enumerate(ids):
+#             j=i+1
+#             while j<len(ids):
+#                 edges.append([id, ids[j]])
+#                 edges.append([ids[j],id])
+#                 j=j+1
+#     pd.DataFrame(edges, columns = ['record_1', 'record_2']).to_csv('edges.csv')
+#     return np.array(edges)
 
 
-def build_edge_weights (edges,dataset):
-    """
-       input : 
-           edges: matrix of pair of ids (ids as index of record)
-           dataset: dataframe content mfcc vector for record
-       purpose : Assign a weigth to the edge between 2 nodes as a distance compute on mfcc values
-       output : matrix [num_edges]
-    """
+# def build_edge_weights (edges,dataset):
+#     """
+#        input : 
+#            edges: matrix of pair of ids (ids as index of record)
+#            dataset: dataframe content mfcc vector for record
+#        purpose : Assign a weigth to the edge between 2 nodes as a distance compute on mfcc values
+#        output : matrix [num_edges]
+#     """
 
-    weights = []
-    for edge in tqdm(edges):
-        nd1, nd2 = edge
-        weights.append(distance(dataset[dataset['ids']==nd1]['mfcc_feautres'].values[0], dataset[dataset['ids']==nd2]['mfcc_feautres'].values[0]))
+#     weights = []
+#     for edge in tqdm(edges):
+#         nd1, nd2 = edge
+#         weights.append(distance(dataset[dataset['ids']==nd1]['mfcc_feautres'].values[0], dataset[dataset['ids']==nd2]['mfcc_feautres'].values[0]))
 
-    return np.array(weights)
+#     return np.array(weights)
 
 def train_test_split(dataset, perc =0.5):
     train_data, test_data = [], []
@@ -161,9 +165,9 @@ def run_experiment(model, x_train, y_train, checkpoint_folder='checkpoint_gnn'):
         metrics=[keras.metrics.SparseCategoricalAccuracy(name="acc")],
     )
     # Create an early stopping callback.
-    early_stopping = keras.callbacks.EarlyStopping(
-        monitor="val_acc", patience=50, restore_best_weights=True
-    )
+    # early_stopping = keras.callbacks.EarlyStopping(
+    #     monitor="val_acc", patience=50, restore_best_weights=True
+    # )
     # Fit the model.
     history = model.fit(
         x=x_train,
@@ -171,7 +175,7 @@ def run_experiment(model, x_train, y_train, checkpoint_folder='checkpoint_gnn'):
         epochs=num_epochs,
         batch_size=batch_size,
         validation_split=0.15,
-        callbacks=[early_stopping,cp_callback],
+        callbacks=[cp_callback],
     )
 
     return history
@@ -249,6 +253,7 @@ class GraphConvLayer(layers.Layer):
     def prepare(self, node_repesentations, weights=None):
         # node_repesentations shape is [num_edges, embedding_dim].
         messages = self.ffn_prepare(node_repesentations)
+       
         if weights is not None:
             messages = messages * tf.expand_dims(weights, -1)
         return messages
@@ -309,11 +314,12 @@ class GraphConvLayer(layers.Layer):
         node_repesentations, edges, edge_weights = inputs
         # Get node_indices (source) and neighbour_indices (target) from edges.
         node_indices, neighbour_indices = edges[0], edges[1]
+        
         # neighbour_repesentations shape is [num_edges, representation_dim].
         neighbour_repesentations = tf.gather(node_repesentations, neighbour_indices)
 
         # Prepare the messages of the neighbours.
-        neighbour_messages = self.prepare(neighbour_repesentations, edge_weights)
+        neighbour_messages = self.prepare(neighbour_repesentations,edge_weights)
         # Aggregate the neighbour messages.
         aggregated_messages = self.aggregate(
             node_indices, neighbour_messages, node_repesentations
@@ -380,11 +386,11 @@ class GNNNodeClassifier(tf.keras.Model):
         # Preprocess the node_features to produce node representations.
         x = self.preprocess(self.node_features)
         # Apply the first graph conv layer.
-        x1 = self.conv1((x, self.edges, self.edge_weights))
+        x1 = self.conv1((x, self.edges,  self.edge_weights))
         # Skip connection.
         x = x1 + x
         # Apply the second graph conv layer.
-        x2 = self.conv2((x, self.edges, self.edge_weights))
+        x2 = self.conv2((x, self.edges,  self.edge_weights))
         # Skip connection.
         x = x2 + x
         # Postprocess node embedding.
@@ -405,16 +411,29 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     input_folder = args.input_folder
-    #dataset =  pd.read_csv(os.path.join(input_folder,'dataset.csv'), dtype='object')
+    
     dataset =  pd.read_pickle(os.path.join(input_folder,'dataset.pl'))
-   
+    dataset = dataset.sort_values("ids")
+    
+    #dataset = dataset[:5]
 # Create an edges array (sparse adjacency matrix) of shape [2, num_edges].
-   #edges, edge_weights = t
-    edges = build_edge(dataset)
+    if os.path.exists(os.path.join(input_folder,'edges.npy')) and  os.path.exists(os.path.join(input_folder,'weights.npy')):
+        with open(os.path.join(input_folder,'edges.npy'), 'rb') as f:
+            edges = np.load(f, allow_pickle=True)
+        with open(os.path.join(input_folder,'weights.npy'), 'rb') as f:
+            edge_weights = np.load(f, allow_pickle=True)
+    else:
+        edges, edge_weights = build_edges(dataset)
+        with open(os.path.join(input_folder,'edges.npy'), 'wb') as f:
+            np.save(f, edges)
+        with open(os.path.join(input_folder,'weights.npy'), 'wb') as f:
+            np.save(f,edge_weights)
+    edges = edges.T
+    #edges = build_edge(dataset)
     print('edges buided')
 # Create an edge weights array of ones.
     #edge_weights = build_edge_weights(edges,dataset)
-    edge_weights = tf.ones(shape=edges.shape[1])
+    #edge_weights = tf.ones(shape=edges.shape[1])
     print('edge_weights buided')
 # Create a node features array of shape [num_nodes, num_features].
     node_features = build_node(dataset)
@@ -434,6 +453,7 @@ if __name__ == "__main__":
     dataset["label"] = dataset["label"].apply(lambda value: class_idx[value])
 
     train_data, test_data = train_test_split(dataset, perc = 0.7)
+
     print("Train data shape:", train_data.shape)
     print("Test data shape:", test_data.shape)
     train_data.to_pickle(os.path.join
@@ -467,7 +487,7 @@ if __name__ == "__main__":
     y_test = test_data.label.to_numpy()
     _, test_accuracy = gnn_model.evaluate(x=x_test, y=y_test, verbose=0)
     print(f"Test accuracy: {round(test_accuracy * 100, 2)}%")
-     _, train_accuracy = gnn_model.evaluate(x=x_train, y=y_train, verbose=0)
+    _, train_accuracy = gnn_model.evaluate(x=x_train, y=y_train, verbose=0)
     print(f"Test accuracy: {round(train_accuracy * 100, 2)}%")
     # with open(os.path.join(input_folder,'node_repesentations.pkl'), 'wb') as f:  # open a text file
     #     pl.dumps(gnn_model.node_embeddings_final.eval())

@@ -14,12 +14,23 @@ if __name__ == "__main__":
     dataset =  pd.read_pickle(os.path.join(input_folder,'dataset.pl'))
    
 # Create an edges array (sparse adjacency matrix) of shape [2, num_edges].
-   #edges, edge_weights = t
-    edges = build_edge(dataset)
+    if os.path.exists(os.path.join(input_folder,'edges.npy')) and  os.path.exists(os.path.join(input_folder,'weights.npy')):
+        with open(os.path.join(input_folder,'edges.npy'), 'rb') as f:
+            edges = np.load(f, allow_pickle=True)
+        with open(os.path.join(input_folder,'weights.npy'), 'rb') as f:
+            edge_weights = np.load(f, allow_pickle=True)
+    else:
+        edges, edge_weights = build_edges(dataset)
+        with open(os.path.join(input_folder,'edges.npy'), 'wb') as f:
+            np.save(f, edges)
+        with open(os.path.join(input_folder,'weights.npy'), 'wb') as f:
+            np.save(f,edge_weights)
+    edges = edges.T
+    #edges = build_edge(dataset)
     print('edges buided')
 # Create an edge weights array of ones.
     #edge_weights = build_edge_weights(edges,dataset)
-    edge_weights = tf.ones(shape=edges.shape[1])
+    #edge_weights = tf.ones(shape=edges.shape[1])
     print('edge_weights buided')
 # Create a node features array of shape [num_nodes, num_features].
     node_features = build_node(dataset)
