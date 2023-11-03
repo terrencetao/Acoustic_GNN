@@ -16,7 +16,7 @@ conv_param =[(20,64,1), 32 ,3] #[input_shape, num_filter, kernel_size]
 pooling_param = [2]# [pooling_size, stride, padding]
 learning_rate = 0.01
 dropout_rate = 0.5
-num_epochs = 1000
+num_epochs = 300
 batch_size = 256
 
 
@@ -44,48 +44,48 @@ def build_node (dataset):
     return np.array(list(dataset.sort_values("ids")['mfcc_feautres']))
 
 
-def build_edges(dataset, threshold =0, beta=0):
-    """
-     Principe of this fonction  followin logic:
-            1-compute a distance d between 2 nodes 
-                if node1.label == node2:
-                    create edge 
-                    weights = d + beta 
-                elif d>threshold :
-                     create edge
-                     weights = d
-        input: 
-          dataset :DataFrame of data
-          threshold: threshold at which distance is considered important enough to create the link
-          beta : the advantage given to the same-label node
-       purpose: build edge between 2 nodes and compute the weigths
-       output : edges =matrix [2, num_edges], weigths =[num_edges]
-    """
-    edges = []
-    weights = []
-    df_edges_w = []
-    ids = pd.unique(dataset['ids'])
+# def build_edges(dataset, threshold =0, beta=0):
+#     """
+#      Principe of this fonction  followin logic:
+#             1-compute a distance d between 2 nodes 
+#                 if node1.label == node2:
+#                     create edge 
+#                     weights = d + beta 
+#                 elif d>threshold :
+#                      create edge
+#                      weights = d
+#         input: 
+#           dataset :DataFrame of data
+#           threshold: threshold at which distance is considered important enough to create the link
+#           beta : the advantage given to the same-label node
+#        purpose: build edge between 2 nodes and compute the weigths
+#        output : edges =matrix [2, num_edges], weigths =[num_edges]
+#     """
+#     edges = []
+#     weights = []
+#     df_edges_w = []
+#     ids = pd.unique(dataset['ids'])
 
-    for i,id1 in tqdm(enumerate(ids)):
-        j=i+1
-        while j<len(ids):
-            d = distance(dataset[dataset['ids']==id1]['mfcc_feautres'].values[0], dataset[dataset['ids']==ids[j]]['mfcc_feautres'].values[0])
+#     for i,id1 in tqdm(enumerate(ids)):
+#         j=i+1
+#         while j<len(ids):
+#             d = distance(dataset[dataset['ids']==id1]['mfcc_feautres'].values[0], dataset[dataset['ids']==ids[j]]['mfcc_feautres'].values[0])
 
-            if d>threshold:
-                edges.append([id1, ids[j]])
+#             if d>threshold:
+#                 edges.append([id1, ids[j]])
 
-                if dataset[dataset['ids']==id1]['label'].values[0]==dataset[dataset['ids']==ids[j]]['mfcc_feautres'].values[0]:
-                    weights.append(d+beta)
-                    weight = d+beta
-                else:
-                    weights.append(d)
-                    weight = d
-                df_edges_w.append([id,ids, weight])
-            j=j+1
-    pd.DataFrame(df_edges_w, columns = ['record_1', 'record_2', 'distance']).to_csv('edges_w.csv')
+#                 if dataset[dataset['ids']==id1]['label'].values[0]==dataset[dataset['ids']==ids[j]]['mfcc_feautres'].values[0]:
+#                     weights.append(d+beta)
+#                     weight = d+beta
+#                 else:
+#                     weights.append(d)
+#                     weight = d
+#                 df_edges_w.append([id,ids, weight])
+#             j=j+1
+#     pd.DataFrame(df_edges_w, columns = ['record_1', 'record_2', 'distance']).to_csv('edges_w.csv')
 
 
-    return np.array(edges), np.array(weights)
+#     return np.array(edges), np.array(weights)
 
 
 
@@ -107,6 +107,7 @@ def build_edge(dataset):
             j=i+1
             while j<len(ids):
                 edges.append([id, ids[j]])
+                edges.append([ids[j],id])
                 j=j+1
     pd.DataFrame(edges, columns = ['record_1', 'record_2']).to_csv('edges.csv')
     return np.array(edges)
@@ -407,10 +408,10 @@ if __name__ == "__main__":
     input_folder = args.input_folder
     #dataset =  pd.read_csv(os.path.join(input_folder,'dataset.csv'), dtype='object')
     dataset =  pd.read_pickle(os.path.join(input_folder,'dataset.pl'))
-   
+    dataset = dataset.sort_values('ids')
 # Create an edges array (sparse adjacency matrix) of shape [2, num_edges].
    #edges, edge_weights = t
-    edges = build_edge(dataset)
+    edges = build_edge(dataset).T
     print('edges buided')
 # Create an edge weights array of ones.
     #edge_weights = build_edge_weights(edges,dataset)
@@ -467,7 +468,7 @@ if __name__ == "__main__":
     y_test = test_data.label.to_numpy()
     _, test_accuracy = gnn_model.evaluate(x=x_test, y=y_test, verbose=0)
     print(f"Test accuracy: {round(test_accuracy * 100, 2)}%")
-     _, train_accuracy = gnn_model.evaluate(x=x_train, y=y_train, verbose=0)
-    print(f"Test accuracy: {round(train_accuracy * 100, 2)}%")
+    _, train_accuracy = gnn_model.evaluate(x=x_train, y=y_train, verbose=0)
+    print(f"Train accuracy: {round(train_accuracy * 100, 2)}%")
     # with open(os.path.join(input_folder,'node_repesentations.pkl'), 'wb') as f:  # open a text file
     #     pl.dumps(gnn_model.node_embeddings_final.eval())
